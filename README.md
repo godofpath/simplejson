@@ -22,14 +22,15 @@ JsonParser p;
 JsonValue* j;
 JsonParser p;
 
-j = p.load(text.toStdString().c_str(), msg);
+j = p.load(jsonstr, msg);
 JsonValue& jr = *j;
 jr["msg"]->toString();
 jr["ivalue"]->toInt();
 jr["doublevalue"]->toDouble();
 
 JsonArray& arr = *jr["arr"];
-qDebug() << arr[0]->toString();
+arr[0].toString();
+jr.dumps().c_str();
 delete j;
 
 ```
