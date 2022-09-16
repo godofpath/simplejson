@@ -1,4 +1,4 @@
-﻿#ifndef SIMPLEJSON_H
+#ifndef SIMPLEJSON_H
 #define SIMPLEJSON_H
 
 #include <string>
@@ -6,8 +6,8 @@
 #include <vector>
 #include <memory>
 #include <list>
+#include <utility>
 #include <stdint.h>
-
 
 enum JsonType {
     JTInt,
@@ -16,103 +16,288 @@ enum JsonType {
     JTBoolean,
     JTArr,
     JTObj,
-    JTNull
+    JTNull,
+    JTUnknown
 };
-
+class JsonParser;
 struct JsonValue {
 protected:
     union {
         bool m_b;
-        int64_t m_i;
+        long m_i;
         double m_d;
         char * m_str = nullptr;
     } m_value;
-    JsonType m_type;
-public:
-    JsonValue() {}
-    JsonValue(const JsonValue&right) = delete;
-    JsonValue& operator=(const JsonValue&right) = delete;
-
-    virtual ~JsonValue() {
-        if (JTObj == m_type) {
-            for (auto v: m_dict) {
-                delete v.second;
-            }
+    JsonType m_type = JTUnknown;
+private:
+    std::map<std::string, JsonValue*> m_dict;
+    std::vector<JsonValue*> m_arr;
+    JsonValue* clone() const {
+        JsonValue * res = new JsonValue;
+        res->m_value = m_value;
+        res->m_type = m_type;
+        if (m_type == JTString && m_value.m_str) {
+            res->m_value.m_str = new char[strlen(m_value.m_str)+1];
+            std::strcpy(res->m_value.m_str, m_value.m_str);
         } else if (JTArr == m_type) {
-            for (auto v: m_arr) {
-                delete v;
+            for (auto& v: m_arr) {
+                JsonValue* nv = v->clone();
+                res->m_arr.push_back(nv);
             }
-        } else if (JTString == m_type) {
-            if (m_value.m_str) {
-                delete []m_value.m_str;
+        } else if (JTObj == m_type) {
+            for (auto& v: m_dict) {
+                JsonValue* nv = v.second->clone();
+                res->m_dict[v.first] = nv;
             }
         }
+        return res;
     }
-    void setType(JsonType jt) {
-        m_type = jt;
+    void clearData() {
+        if (m_type == JTString && m_value.m_str) {
+            delete[] m_value.m_str;
+            m_value.m_str = nullptr;
+        } else if (JTArr == m_type) {
+            for (auto& v: m_arr) {
+                delete v;
+            }
+            m_arr.clear();
+        } else if (JTObj == m_type) {
+            for (auto& v: m_dict) {
+                delete v.second;
+            }
+            m_dict.clear();
+        }
     }
-    JsonType type() const {return m_type;}
-    void setInt(int64_t i) {
+public:
+    friend class JsonParser;
+    JsonValue(JsonType t =JTObj) {m_type = t;}
+    JsonValue(long i) {
         m_type = JTInt;
         m_value.m_i = i;
     }
-    int64_t toInt() const {
-        return m_value.m_i;
+    JsonValue(int i) {
+        m_type = JTInt;
+        m_value.m_i = i;
     }
-    void setBoolean(bool b) {
+    JsonValue(const char* str) {
+        m_type = JTString;
+        m_value.m_str = new char[strlen(str)+1];
+        std::strcpy(m_value.m_str, str);
+    }
+    JsonValue(bool b) {
         m_type = JTBoolean;
         m_value.m_b = b;
     }
-    bool toBoolean() const {
-        return m_value.m_b;
-    }
-    void setDouble(double d) {
+    JsonValue(double d) {
         m_type = JTDouble;
         m_value.m_d = d;
     }
-    double toDouble() const {
-        return m_value.m_d;
+    JsonValue(const JsonValue& right) {
+        m_value = right.m_value;
+        m_type = right.m_type;
+        if (m_type == JTString && right.m_value.m_str) {
+            m_value.m_str = new char[strlen(right.m_value.m_str)+1];
+            std::strcpy(m_value.m_str, right.m_value.m_str);
+        } else if (JTArr == m_type) {
+            for (auto& v: right.m_arr) {
+//                JsonValue* nv = new JsonValue(*v);
+//                m_arr.push_back(nv);
+                m_arr.push_back(v->clone());
+            }
+        } else if (JTObj == m_type) {
+            for (auto& v: right.m_dict) {
+//                JsonValue* nv = new JsonValue(*v.second);
+//                m_dict[v.first] = nv;
+                m_dict[v.first] = v.second->clone();
+            }
+        }
     }
-    void setString(const char* str, int n) {
+    JsonValue& operator=(const JsonValue&right) {
+        if (this == &right) {
+            return *this;
+        }
+        clearData();
+        m_value = right.m_value;
+        m_type = right.m_type;
+        if (m_type == JTString) {
+            if (right.m_value.m_str) {
+                m_value.m_str = new char[strlen(right.m_value.m_str)+1];
+                std::strcpy(m_value.m_str, right.m_value.m_str);
+            }
+        } else if (JTArr == m_type) {
+            for (JsonValue* v: right.m_arr) {
+//                JsonValue* nv = new JsonValue(*v);
+//                m_arr.push_back(nv);
+                m_arr.push_back(v->clone());
+            }
+        } else if (JTObj == m_type) {
+            for (auto& v: right.m_dict) {
+//                JsonValue* nv = new JsonValue(*v.second);
+//                m_dict[v.first] = nv;
+                m_dict[v.first] = v.second->clone();
+            }
+        }
+        return *this;
+    }
+    JsonValue& operator=(JsonValue&&right) {
+        if (this==&right) {
+            return *this;
+        }
+        clearData();
+        m_type = right.m_type;
+        m_value = right.m_value;
+        m_dict = right.m_dict;
+        m_arr = right.m_arr;
+
+        right.m_value.m_str = nullptr;
+        right.m_dict.clear();
+        right.m_arr.clear();
+        return *this;
+    }
+    JsonValue(JsonValue&&right) {
+        m_type = right.m_type;
+        m_value = right.m_value;
+        m_dict = right.m_dict;
+        m_arr = right.m_arr;
+
+        right.m_value.m_str = nullptr;
+        right.m_dict.clear();
+        right.m_arr.clear();
+    }
+
+    virtual ~JsonValue() {
+        clearData();
+    }
+private:
+    void setType(JsonType jt) {
+        m_type = jt;
+    }
+    void set(long i) {
+        m_type = JTInt;
+        m_value.m_i = i;
+    }
+    void set(bool b) {
+        m_type = JTBoolean;
+        m_value.m_b = b;
+    }
+
+    void set(double d) {
+        m_type = JTDouble;
+        m_value.m_d = d;
+    }
+
+    void set(const char* str, int n) {
+        if (!str) {
+            return;
+        }
         m_type = JTString;
         m_value.m_str = new char[n+1];
         m_value.m_str[n] = 0;
         memcpy(m_value.m_str, str, n);
     }
-    const char* toString() const {
+    bool addObj(const std::string& key, JsonValue* value) {
+        if (m_type != JTObj) return false;
+        m_dict[key] = value;
+        return true;
+    }
+    bool addObj(JsonValue* value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(value);
+        return true;
+    }
+public:
+    JsonType type() const noexcept {return m_type;}
+    bool toBoolean() const noexcept {
+        return m_value.m_b;
+    }
+    long toInt() const noexcept {
+        return m_value.m_i;
+    }
+    const char* toString() const noexcept {
         return m_value.m_str;
     }
-    void setNull() {
+
+    double toDouble() const noexcept {
+        return m_value.m_d;
+    }
+    JsonValue& toJsonArray() {
+        if (m_type != JTArr) {
+            throw("obj is not array");
+        }
+        return *this;
+    }
+    JsonValue& toJsonObject(){
+        if (m_type != JTObj) {
+            throw("obj is not object");
+        }
+        return *this;
+    }
+    void set() {
         m_type = JTNull;
     }
-    void addObj(const std::string& key, JsonValue* value) {
-        m_dict[key] = value;
+
+    bool append(const char* value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(new JsonValue(value));
+        return true;
     }
-    void addObj(JsonValue* value) {
-        m_arr.push_back(value);
+    bool append(long value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(new JsonValue(value));
+        return true;
     }
-    JsonValue* operator[](const std::string& key) const {
+    bool append(bool value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(new JsonValue(value));
+        return true;
+    }
+    bool append(double value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(new JsonValue(value));
+        return true;
+    }
+    bool append(const JsonValue& value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(value.clone());
+        return true;
+    }
+    bool append(JsonValue&& value) {
+        if (m_type != JTArr) return false;
+        m_arr.push_back(new JsonValue(std::forward<JsonValue&&>(value)));
+        return true;
+    }
+    bool contain(const std::string& key) {
         if (JTObj == m_type) {
             decltype(m_dict.begin()) itr;
             if ( (itr = m_dict.find(key)) != m_dict.end() ) {
-                return itr->second;
-            } else {
-                return nullptr;
+                return true;
             }
         }
-        return nullptr;
+        return false;
     }
-    JsonValue* operator[](uint32_t index) const {
+    JsonValue& operator[](const std::string& key) {
+        if (JTObj == m_type) {
+            decltype(m_dict.begin()) itr;
+            if ( (itr = m_dict.find(key)) != m_dict.end() ) {
+                return *itr->second;
+            } else {
+                JsonValue* obj = new JsonValue;
+                m_dict[key] = obj;
+                return *obj;
+            }
+        }
+        throw("key operation must with a JsonObj type.");
+    }
+    JsonValue& operator[](uint32_t index) {
         if (JTArr == m_type) {
             if ( m_arr.size() > index ) {
-                return m_arr[index];
-            } else {
-                return nullptr;
+                return *m_arr[index];
             }
+            throw("index out of bound.");
         }
-        return nullptr;
+        throw("index operation must with a JsonArr type.");
     }
-    int32_t count() const {
+    size_t size() const {
         if (JTArr == m_type) {
             return m_arr.size();
         }
@@ -137,57 +322,58 @@ public:
         return m_type == JTBoolean;
     }
 
-    std::string dumps(int level = 0) const {
+    std::string dumps(int level = 1) const {
         // 缩进先不管
         std::string s;
         char buf[32];
         if (m_type == JTBoolean) {
             return m_value.m_b? "true": "false";
         } else if (m_type == JTInt) {
-            sprintf(buf, "%lld", m_value.m_i);
+            sprintf(buf, "%ld", m_value.m_i);
             return buf;
         } else if (m_type == JTDouble) {
             sprintf(buf, "%f", m_value.m_d);
             return buf;
         } else if (m_type == JTString) {
-            return "\"" + std::string(m_value.m_str) + "\"";
+            sprintf(buf, "\"%s\"", m_value.m_str);
+            return buf;
+        } else if (m_type == JTNull) {
+            return "null";
         } else if (m_type == JTObj) {
             auto indentation = std::string(level, '\t');
-            s += indentation;
+//            s += indentation;
             int count = 1;
             s += "{\n";
             for (auto itr = m_dict.begin(); itr != m_dict.end(); itr++) {
-                s += (indentation + "\t");
-                s += itr->first;
-                s += ": ";
-                s += itr->second->dumps();
+                s += (indentation);
+                s += "\"" + itr->first + "\": ";
+                s += itr->second->dumps(level+1);
                 if (count < m_dict.size()) {
-                    s += ",";
+                    s += ",\n";
                 }
                 count++;
             }
-            s = s.substr(0, s.size()-1);
-            s += "\n}";
+
+            s += "\n";
+            s += indentation.substr(0, indentation.size()-1);
+            s += "}";
         } else if (m_type == JTArr) {
             auto indentation = std::string(level, '\t');
-            s += indentation;
+//            s += indentation;
             int count = 1;
-            s += "[\n";
+            s += "[";
             for (auto itr = m_arr.begin(); itr != m_arr.end(); itr++) {
-                s += (*itr)->dumps();
+                s += (*itr)->dumps(level+1);
                 if (count < m_arr.size()) {
                     s += ",";
                 }
                 count++;
             }
-            s = s.substr(0, s.size()-1);
-            s += "\n]";
+//            s = s.substr(0, s.size());
+            s += "]";
         }
         return s;
     }
-private:
-    std::map<std::string, JsonValue*> m_dict;
-    std::vector<JsonValue*> m_arr;
 };
 
 using JsonObj   = JsonValue;
@@ -248,7 +434,7 @@ class JsonParser {
         } else {
             JsonValue* obj = new JsonValue;
             obj->setType(JTString);
-            obj->setString(p, n);
+            obj->set(p, n);
             return obj;
         }
 
@@ -279,7 +465,7 @@ class JsonParser {
             tmp = *p;
             *p = 0;
             JsonValue* jv = new JsonValue;
-            jv->setDouble(std::atof(m_content));
+            jv->set(std::atof(m_content));
             *p = tmp;
             m_content = p;
             return jv;
@@ -287,7 +473,7 @@ class JsonParser {
             tmp = *p;
             *p = 0;
             JsonValue* jv = new JsonValue;
-            jv->setInt(std::atol(m_content));
+            jv->set(std::atol(m_content));
             *p = tmp;
             m_content = p;
             return jv;
@@ -298,12 +484,12 @@ class JsonParser {
         JsonValue* obj = nullptr;
         if (memcmp(m_content, "true", 4)) {
             obj = new JsonValue;
-            obj->setBoolean(true);
+            obj->set(true);
             m_content += 4;
             m_posInLine += 4;
         } else if (memcmp(m_content, "false", 5)) {
             obj = new JsonValue;
-            obj->setBoolean(false);
+            obj->set(false);
             m_content += 5;
             m_posInLine += 5;
         }
@@ -314,7 +500,7 @@ class JsonParser {
         JsonValue* obj = nullptr;
         if (memcmp(m_content, "null", 4)) {
             obj = new JsonValue;
-            obj->setNull();
+            obj->set();
             m_content += 4;
             m_posInLine += 4;
         }
@@ -340,7 +526,7 @@ class JsonParser {
                 if (*m_content == 'n') {
                     auto obj = parseNull();
                     if (obj) {
-                        arr->addObj(obj);
+                        arr->append(obj);
                     } else {
                         return nullptr;
                     }
@@ -363,7 +549,7 @@ class JsonParser {
                     std::tie(p, len) = parseString();
                     if (p) {
                         JsonValue* obj = new JsonValue;
-                        obj->setString(p, len);
+                        obj->set(p, len);
                         arr->addObj(obj);
                     } else {
                         return nullptr;
@@ -507,7 +693,7 @@ class JsonParser {
                     std::tie(p, len) = parseString();
                     if (p) {
                         JsonValue* s = new JsonValue;
-                        s->setString(p, len);
+                        s->set(p, len);
                         obj->addObj(key, s);
                     } else {
                         return nullptr;
@@ -572,23 +758,23 @@ class JsonParser {
         return m_msg;
     }
 public:
-    JsonValue* load(const char* content, std::string& msg) {
+    JsonValue load(const char* content, std::string& msg) {
         msg = "";
         m_content = const_cast<char*>(content);
         // std::vector<State> states(100);
         // std::vector<JsonValue*> parentObj;
-        JsonValue* root = nullptr;
-
+        JsonValue root;
+        JsonValue * proot = nullptr;
         while (*m_content != 0) {
             if (*m_content == '{') {
                 m_content++;
                 m_posInLine++;
-                root = parseObj();
+                proot = parseObj();
                 break;
             } else if (*m_content == '[') {
                 m_posInLine++;
                 m_content++;
-                root = parseArr();
+                proot = parseArr();
                 break;
             } else if (*m_content == '\n') {
                 m_lines++;
@@ -596,14 +782,14 @@ public:
             } else if (*m_content == '\t' || *m_content == ' ' || *m_content == '\r') {
                 m_posInLine++;
             } else {
-                return nullptr;
+                return root;
             }
             m_content++;
         }
-        if (!root) {
+        if (!proot) {
             genMsg();
             msg = m_msg;
-            return nullptr;
+            return JsonValue();
         }
         while (*m_content != 0) {
             if ((*m_content == '\n' || *m_content || '\t' || *m_content == ' ' || *m_content == '\r')) {
@@ -611,20 +797,22 @@ public:
             } else {
                 genMsg();
                 msg = m_msg;
-                delete root;
-                root = nullptr;
-                return nullptr;
+                delete proot;
+                proot = nullptr;
+                return JsonValue();
             }
         }
         msg = m_msg;
         init();
+        root = JsonValue(std::move(*proot));
+        delete proot;
         return root;
     }
 private:
     char *m_content = nullptr;
     int m_lines = 1;
     int m_posInLine = 1;
-    char m_msg[32];
+    char m_msg[64]={0};
     void init() {
         // m_content = nullptr;
         m_lines = 1;
