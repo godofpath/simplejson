@@ -4,7 +4,7 @@ a simple c++ json class to load/access/modify/dump json
 # usage
 ## Example 1
 
-This example show how to create an instance and access elements, and dump to file([3.json](#j3))
+This example show how to create an instance, access elements, and dump to file([3.json](#j3))
 ```C++
 void testModifyAccess() {
     JsonObj book;
