@@ -1,0 +1,9 @@
+{
+    "name": "Cxy",
+    "age": 10,
+    "Address": {
+        "province": "Guangdong",
+        "city": "Guangzhou"
+    },
+    "courses": ["Math", "英语", "Others", {"dir":1, "d": 2}, [1,2,3,4]]
+}

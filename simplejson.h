@@ -1,7 +1,7 @@
 #ifndef SIMPLEJSON_H
 #define SIMPLEJSON_H
 
-#include <string>
+#include <cstring>
 #include <map>
 #include <vector>
 #include <memory>
@@ -38,7 +38,7 @@ private:
         res->m_type = m_type;
         if (m_type == JTString && m_value.m_str) {
             res->m_value.m_str = new char[strlen(m_value.m_str)+1];
-            std::strcpy(res->m_value.m_str, m_value.m_str);
+            strcpy(res->m_value.m_str, m_value.m_str);
         } else if (JTArr == m_type) {
             for (auto& v: m_arr) {
                 JsonValue* nv = v->clone();
@@ -100,14 +100,10 @@ public:
             std::strcpy(m_value.m_str, right.m_value.m_str);
         } else if (JTArr == m_type) {
             for (auto& v: right.m_arr) {
-//                JsonValue* nv = new JsonValue(*v);
-//                m_arr.push_back(nv);
                 m_arr.push_back(v->clone());
             }
         } else if (JTObj == m_type) {
             for (auto& v: right.m_dict) {
-//                JsonValue* nv = new JsonValue(*v.second);
-//                m_dict[v.first] = nv;
                 m_dict[v.first] = v.second->clone();
             }
         }
@@ -126,14 +122,10 @@ public:
             }
         } else if (JTArr == m_type) {
             for (JsonValue* v: right.m_arr) {
-//                JsonValue* nv = new JsonValue(*v);
-//                m_arr.push_back(nv);
                 m_arr.push_back(v->clone());
             }
         } else if (JTObj == m_type) {
             for (auto& v: right.m_dict) {
-//                JsonValue* nv = new JsonValue(*v.second);
-//                m_dict[v.first] = nv;
                 m_dict[v.first] = v.second->clone();
             }
         }
@@ -341,7 +333,6 @@ public:
             return "null";
         } else if (m_type == JTObj) {
             auto indentation = std::string(level, '\t');
-//            s += indentation;
             int count = 1;
             s += "{\n";
             for (auto itr = m_dict.begin(); itr != m_dict.end(); itr++) {
@@ -359,7 +350,6 @@ public:
             s += "}";
         } else if (m_type == JTArr) {
             auto indentation = std::string(level, '\t');
-//            s += indentation;
             int count = 1;
             s += "[";
             for (auto itr = m_arr.begin(); itr != m_arr.end(); itr++) {
@@ -369,7 +359,6 @@ public:
                 }
                 count++;
             }
-//            s = s.substr(0, s.size());
             s += "]";
         }
         return s;
@@ -385,14 +374,6 @@ using JsonArray = JsonValue;
 class JsonParser {
     enum ParseState {
         JsonStateUnknown,
-//        JsonStateBeginAttr,
-//        JsonStateEndAttr,
-//        JsonStateBeginNumber,
-//        JsonStateEndNumber,
-//        JsonStateBeginStr,
-//        JsonStateEndStr,
-//        JsonStateBeginBoolean,
-//        JsonStateEndBoolean,
 
         JsonStateArrBegin,
         JsonStateArrNeedCommaOrEnd,
@@ -639,9 +620,10 @@ class JsonParser {
                 if (*m_content == '"') {
                     m_content++;
                     m_posInLine++;
-                    char* p;
-                    int len;
-                    std::tie(p, len) = parseString();
+                    // char* p;
+                    // int len;
+                    // std::tie(p, len) = parseString();
+                    auto [p, len] = parseString();
                     if (p) {
                         memcpy(key, p, len);
                         key[len] = 0;
